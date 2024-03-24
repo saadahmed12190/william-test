@@ -1,0 +1,1300 @@
+AWSTemplateFormatVersion: 2010-09-09
+Parameters:
+  DjangoSettingsModule:
+    Type: String
+    Default: 'config.settings.production'
+  DjangoSecretKey:
+    Type: String
+    Default: ''
+  DjangoAdminUrl:
+    Type: String
+    Default: 'rS5nsnEyrXkWwDyzXo1nQgvd6MW5V1KP/'
+  DjangoAllowedHosts:
+    Type: String
+    Default: '.mirari-dev-env.xyz'
+  DjangoSecureSSLRedirect:
+    Type: String
+    Default: 'False'
+  DjangoServerEmail:
+    Type: String
+    Default: ''
+  DjangoAwsAccessKeyId:
+    Type: String
+    Default: ''
+  DjangoAwsSecretAccessKey:
+    Type: String
+    Default: ''
+  DjangoAwsStorageBucketName:
+    Type: String
+    Default: ''
+  DjangoAwsS3RegionName:
+    Type: String
+    Default: 'us-east-1'
+  DjangoAccountAllowRegistration:
+    Type: String
+    Default: 'True'
+  WebConcurrency:
+    Type: Number
+    Default: 4
+  SentryDsn:
+    Type: String
+    Default: 'https://aa928fd5efa51ef6a52c59a89d9f7411@o4506837432795136.ingest.sentry.io/4506837437317120'
+  RedisUrl:
+    Type: String
+    Default: 'redis://redis:6379/0'
+  CeleryFlowerUser:
+    Type: String
+    Default: 'KBgTfQaBYStxfbDhQRGQqYbyrKrmNBZu'
+  CeleryFlowerPassword:
+    Type: String
+    Default: 'zqsdmg753xhzxYcRR9SjqUmz950z6I1RFXOBhj7RikVsOcc8ertLX8ec7mdc8pd2'
+  PostgresHost:
+    Type: String
+    Default: ''
+  PostgresPort:
+    Type: Number
+    Default: 5432
+  PostgresDB:
+    Type: String
+    Default: 'templatebackend'
+  PostgresUser:
+    Type: String
+    Default: 'postgres'
+  PostgresPassword:
+    Type: String
+    Default: ''
+Resources:
+  CelerybeatService:
+    DependsOn:
+      - RedisService
+    Properties:
+      Cluster: !GetAtt 
+        - Cluster
+        - Arn
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DeploymentController:
+        Type: ECS
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref DefaultNetwork
+          Subnets:
+            - subnet-00679d3eb302169df
+            - subnet-0ed7f0209a3c916ee
+            - subnet-094047189375fd454
+      PlatformVersion: 1.4.0
+      PropagateTags: SERVICE
+      SchedulingStrategy: REPLICA
+      ServiceRegistries:
+        - RegistryArn: !GetAtt 
+            - CelerybeatServiceDiscoveryEntry
+            - Arn
+      Tags:
+        - Key: com.docker.compose.project
+          Value: templatebackend-backend
+        - Key: com.docker.compose.service
+          Value: celerybeat
+      TaskDefinition: !Ref CelerybeatTaskDefinition
+    Type: 'AWS::ECS::Service'
+  CelerybeatServiceDiscoveryEntry:
+    Properties:
+      Description: '"celerybeat" service discovery entry in Cloud Map'
+      DnsConfig:
+        DnsRecords:
+          - TTL: 60
+            Type: A
+        RoutingPolicy: MULTIVALUE
+      HealthCheckCustomConfig:
+        FailureThreshold: 1
+      Name: celerybeat
+      NamespaceId: !Ref CloudMap
+    Type: 'AWS::ServiceDiscovery::Service'
+  CelerybeatTaskDefinition:
+    Properties:
+      ContainerDefinitions:
+        - Command:
+            - eu-north-1.compute.internal
+            - templatebackend-backend.local
+          Environment:
+            - Name: DJANGO_SETTINGS_MODULE
+              Value: !Ref DjangoSettingsModule
+            - Name: DJANGO_SECRET_KEY
+              Value: !Ref DjangoSecretKey
+            - Name: DJANGO_ADMIN_URL
+              Value: !Ref DjangoAdminUrl
+            - Name: DJANGO_ALLOWED_HOSTS
+              Value: !Ref DjangoAllowedHosts
+            - Name: DJANGO_SECURE_SSL_REDIRECT
+              Value: !Ref DjangoSecureSSLRedirect
+            - Name: DJANGO_SERVER_EMAIL
+              Value: !Ref DjangoServerEmail
+            - Name: DJANGO_AWS_ACCESS_KEY_ID
+              Value: !Ref DjangoAwsAccessKeyId
+            - Name: DJANGO_AWS_SECRET_ACCESS_KEY
+              Value: !Ref DjangoAwsSecretAccessKey
+            - Name: DJANGO_AWS_STORAGE_BUCKET_NAME
+              Value: !Ref DjangoAwsStorageBucketName
+            - Name: DJANGO_AWS_S3_REGION_NAME
+              Value: !Ref DjangoAwsS3RegionName
+            - Name: DJANGO_ACCOUNT_ALLOW_REGISTRATION
+              Value: !Ref DjangoAccountAllowRegistration
+            - Name: WEB_CONCURRENCY
+              Value: !Ref WebConcurrency
+            - Name: SENTRY_DSN
+              Value: !Ref SentryDsn
+            - Name: REDIS_URL
+              Value: !Ref RedisUrl
+            - Name: CELERY_FLOWER_USER
+              Value: !Ref CeleryFlowerUser
+            - Name: CELERY_FLOWER_PASSWORD
+              Value: !Ref CeleryFlowerPassword
+            - Name: POSTGRES_HOST
+              Value: !Ref PostgresHost
+            - Name: POSTGRES_PORT
+              Value: !Ref PostgresPort
+            - Name: POSTGRES_DB
+              Value: !Ref PostgresDB
+            - Name: POSTGRES_USER
+              Value: !Ref PostgresUser
+            - Name: POSTGRES_PASSWORD
+              Value: !Ref PostgresPassword
+          Essential: false
+          Image: 'docker/ecs-searchdomain-sidecar:1.0'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref 'AWS::Region'
+              awslogs-stream-prefix: templatebackend-backend
+          Name: Celerybeat_ResolvConf_InitContainer
+        - Command:
+            - /start-celerybeat
+          Environment:
+            - Name: DJANGO_SETTINGS_MODULE
+              Value: !Ref DjangoSettingsModule
+            - Name: DJANGO_SECRET_KEY
+              Value: !Ref DjangoSecretKey
+            - Name: DJANGO_ADMIN_URL
+              Value: !Ref DjangoAdminUrl
+            - Name: DJANGO_ALLOWED_HOSTS
+              Value: !Ref DjangoAllowedHosts
+            - Name: DJANGO_SECURE_SSL_REDIRECT
+              Value: !Ref DjangoSecureSSLRedirect
+            - Name: DJANGO_SERVER_EMAIL
+              Value: !Ref DjangoServerEmail
+            - Name: DJANGO_AWS_ACCESS_KEY_ID
+              Value: !Ref DjangoAwsAccessKeyId
+            - Name: DJANGO_AWS_SECRET_ACCESS_KEY
+              Value: !Ref DjangoAwsSecretAccessKey
+            - Name: DJANGO_AWS_STORAGE_BUCKET_NAME
+              Value: !Ref DjangoAwsStorageBucketName
+            - Name: DJANGO_AWS_S3_REGION_NAME
+              Value: !Ref DjangoAwsS3RegionName
+            - Name: DJANGO_ACCOUNT_ALLOW_REGISTRATION
+              Value: !Ref DjangoAccountAllowRegistration
+            - Name: WEB_CONCURRENCY
+              Value: !Ref WebConcurrency
+            - Name: SENTRY_DSN
+              Value: !Ref SentryDsn
+            - Name: REDIS_URL
+              Value: !Ref RedisUrl
+            - Name: CELERY_FLOWER_USER
+              Value: !Ref CeleryFlowerUser
+            - Name: CELERY_FLOWER_PASSWORD
+              Value: !Ref CeleryFlowerPassword
+            - Name: POSTGRES_HOST
+              Value: !Ref PostgresHost
+            - Name: POSTGRES_PORT
+              Value: !Ref PostgresPort
+            - Name: POSTGRES_DB
+              Value: !Ref PostgresDB
+            - Name: POSTGRES_USER
+              Value: !Ref PostgresUser
+            - Name: POSTGRES_PASSWORD
+              Value: !Ref PostgresPassword
+          DependsOn:
+            - Condition: SUCCESS
+              ContainerName: Celerybeat_ResolvConf_InitContainer
+          Essential: true
+          Image: >-
+            205984973098.dkr.ecr.eu-north-1.amazonaws.com/templatebackend_production_celerybeat:latest
+          LinuxParameters: {}
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref 'AWS::Region'
+              awslogs-stream-prefix: templatebackend-backend
+          Name: celerybeat
+      Cpu: '256'
+      ExecutionRoleArn: !Ref CelerybeatTaskExecutionRole
+      Family: templatebackend-backend-celerybeat
+      Memory: '512'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+    Type: 'AWS::ECS::TaskDefinition'
+  CelerybeatTaskExecutionRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Condition: {}
+            Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+        Version: 2012-10-17
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy'
+        - 'arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly'
+      Tags:
+        - Key: com.docker.compose.project
+          Value: templatebackend-backend
+        - Key: com.docker.compose.service
+          Value: celerybeat
+    Type: 'AWS::IAM::Role'
+  CeleryworkerService:
+    DependsOn:
+      - RedisService
+    Properties:
+      Cluster: !GetAtt 
+        - Cluster
+        - Arn
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DeploymentController:
+        Type: ECS
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref DefaultNetwork
+          Subnets:
+            - subnet-00679d3eb302169df
+            - subnet-0ed7f0209a3c916ee
+            - subnet-094047189375fd454
+      PlatformVersion: 1.4.0
+      PropagateTags: SERVICE
+      SchedulingStrategy: REPLICA
+      ServiceRegistries:
+        - RegistryArn: !GetAtt 
+            - CeleryworkerServiceDiscoveryEntry
+            - Arn
+      Tags:
+        - Key: com.docker.compose.project
+          Value: templatebackend-backend
+        - Key: com.docker.compose.service
+          Value: celeryworker
+      TaskDefinition: !Ref CeleryworkerTaskDefinition
+    Type: 'AWS::ECS::Service'
+  CeleryworkerServiceDiscoveryEntry:
+    Properties:
+      Description: '"celeryworker" service discovery entry in Cloud Map'
+      DnsConfig:
+        DnsRecords:
+          - TTL: 60
+            Type: A
+        RoutingPolicy: MULTIVALUE
+      HealthCheckCustomConfig:
+        FailureThreshold: 1
+      Name: celeryworker
+      NamespaceId: !Ref CloudMap
+    Type: 'AWS::ServiceDiscovery::Service'
+  CeleryworkerTaskDefinition:
+    Properties:
+      ContainerDefinitions:
+        - Command:
+            - eu-north-1.compute.internal
+            - templatebackend-backend.local
+          Environment:
+            - Name: DJANGO_SETTINGS_MODULE
+              Value: !Ref DjangoSettingsModule
+            - Name: DJANGO_SECRET_KEY
+              Value: !Ref DjangoSecretKey
+            - Name: DJANGO_ADMIN_URL
+              Value: !Ref DjangoAdminUrl
+            - Name: DJANGO_ALLOWED_HOSTS
+              Value: !Ref DjangoAllowedHosts
+            - Name: DJANGO_SECURE_SSL_REDIRECT
+              Value: !Ref DjangoSecureSSLRedirect
+            - Name: DJANGO_SERVER_EMAIL
+              Value: !Ref DjangoServerEmail
+            - Name: DJANGO_AWS_ACCESS_KEY_ID
+              Value: !Ref DjangoAwsAccessKeyId
+            - Name: DJANGO_AWS_SECRET_ACCESS_KEY
+              Value: !Ref DjangoAwsSecretAccessKey
+            - Name: DJANGO_AWS_STORAGE_BUCKET_NAME
+              Value: !Ref DjangoAwsStorageBucketName
+            - Name: DJANGO_AWS_S3_REGION_NAME
+              Value: !Ref DjangoAwsS3RegionName
+            - Name: DJANGO_ACCOUNT_ALLOW_REGISTRATION
+              Value: !Ref DjangoAccountAllowRegistration
+            - Name: WEB_CONCURRENCY
+              Value: !Ref WebConcurrency
+            - Name: SENTRY_DSN
+              Value: !Ref SentryDsn
+            - Name: REDIS_URL
+              Value: !Ref RedisUrl
+            - Name: CELERY_FLOWER_USER
+              Value: !Ref CeleryFlowerUser
+            - Name: CELERY_FLOWER_PASSWORD
+              Value: !Ref CeleryFlowerPassword
+            - Name: POSTGRES_HOST
+              Value: !Ref PostgresHost
+            - Name: POSTGRES_PORT
+              Value: !Ref PostgresPort
+            - Name: POSTGRES_DB
+              Value: !Ref PostgresDB
+            - Name: POSTGRES_USER
+              Value: !Ref PostgresUser
+            - Name: POSTGRES_PASSWORD
+              Value: !Ref PostgresPassword
+          Essential: false
+          Image: 'docker/ecs-searchdomain-sidecar:1.0'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref 'AWS::Region'
+              awslogs-stream-prefix: templatebackend-backend
+          Name: Celeryworker_ResolvConf_InitContainer
+        - Command:
+            - /start-celeryworker
+          Environment:
+            - Name: DJANGO_SETTINGS_MODULE
+              Value: !Ref DjangoSettingsModule
+            - Name: DJANGO_SECRET_KEY
+              Value: !Ref DjangoSecretKey
+            - Name: DJANGO_ADMIN_URL
+              Value: !Ref DjangoAdminUrl
+            - Name: DJANGO_ALLOWED_HOSTS
+              Value: !Ref DjangoAllowedHosts
+            - Name: DJANGO_SECURE_SSL_REDIRECT
+              Value: !Ref DjangoSecureSSLRedirect
+            - Name: DJANGO_SERVER_EMAIL
+              Value: !Ref DjangoServerEmail
+            - Name: DJANGO_AWS_ACCESS_KEY_ID
+              Value: !Ref DjangoAwsAccessKeyId
+            - Name: DJANGO_AWS_SECRET_ACCESS_KEY
+              Value: !Ref DjangoAwsSecretAccessKey
+            - Name: DJANGO_AWS_STORAGE_BUCKET_NAME
+              Value: !Ref DjangoAwsStorageBucketName
+            - Name: DJANGO_AWS_S3_REGION_NAME
+              Value: !Ref DjangoAwsS3RegionName
+            - Name: DJANGO_ACCOUNT_ALLOW_REGISTRATION
+              Value: !Ref DjangoAccountAllowRegistration
+            - Name: WEB_CONCURRENCY
+              Value: !Ref WebConcurrency
+            - Name: SENTRY_DSN
+              Value: !Ref SentryDsn
+            - Name: REDIS_URL
+              Value: !Ref RedisUrl
+            - Name: CELERY_FLOWER_USER
+              Value: !Ref CeleryFlowerUser
+            - Name: CELERY_FLOWER_PASSWORD
+              Value: !Ref CeleryFlowerPassword
+            - Name: POSTGRES_HOST
+              Value: !Ref PostgresHost
+            - Name: POSTGRES_PORT
+              Value: !Ref PostgresPort
+            - Name: POSTGRES_DB
+              Value: !Ref PostgresDB
+            - Name: POSTGRES_USER
+              Value: !Ref PostgresUser
+            - Name: POSTGRES_PASSWORD
+              Value: !Ref PostgresPassword
+          DependsOn:
+            - Condition: SUCCESS
+              ContainerName: Celeryworker_ResolvConf_InitContainer
+          Essential: true
+          Image: >-
+            205984973098.dkr.ecr.eu-north-1.amazonaws.com/templatebackend_production_celeryworker:latest
+          LinuxParameters: {}
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref 'AWS::Region'
+              awslogs-stream-prefix: templatebackend-backend
+          Name: celeryworker
+      Cpu: '256'
+      ExecutionRoleArn: !Ref CeleryworkerTaskExecutionRole
+      Family: templatebackend-backend-celeryworker
+      Memory: '512'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+    Type: 'AWS::ECS::TaskDefinition'
+  CeleryworkerTaskExecutionRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Condition: {}
+            Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+        Version: 2012-10-17
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy'
+        - 'arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly'
+      Tags:
+        - Key: com.docker.compose.project
+          Value: templatebackend-backend
+        - Key: com.docker.compose.service
+          Value: celeryworker
+    Type: 'AWS::IAM::Role'
+  CloudMap:
+    Properties:
+      Description: Service Map for Docker Compose project templatebackend-backend
+      Name: templatebackend-backend.local
+      Vpc: vpc-0d9d3441cbc5f93a6
+    Type: 'AWS::ServiceDiscovery::PrivateDnsNamespace'
+  Cluster:
+    Properties:
+      ClusterName: templatebackend-backend
+      Tags:
+        - Key: com.docker.compose.project
+          Value: templatebackend-backend
+    Type: 'AWS::ECS::Cluster'
+  Default80Ingress:
+    Properties:
+      CidrIp: 0.0.0.0/0
+      Description: 'traefik:80/tcp on default network'
+      FromPort: 80
+      GroupId: !Ref DefaultNetwork
+      IpProtocol: TCP
+      ToPort: 80
+    Type: 'AWS::EC2::SecurityGroupIngress'
+  Default443Ingress:
+    Properties:
+      CidrIp: 0.0.0.0/0
+      Description: 'traefik:443/tcp on default network'
+      FromPort: 443
+      GroupId: !Ref DefaultNetwork
+      IpProtocol: TCP
+      ToPort: 443
+    Type: 'AWS::EC2::SecurityGroupIngress'
+  Default5555Ingress:
+    Properties:
+      CidrIp: 0.0.0.0/0
+      Description: 'traefik:5555/tcp on default network'
+      FromPort: 5555
+      GroupId: !Ref DefaultNetwork
+      IpProtocol: TCP
+      ToPort: 5555
+    Type: 'AWS::EC2::SecurityGroupIngress'
+  DefaultNetwork:
+    Properties:
+      GroupDescription: templatebackend-backend Security Group for default network
+      Tags:
+        - Key: com.docker.compose.project
+          Value: templatebackend-backend
+        - Key: com.docker.compose.network
+          Value: templatebackend-backend_default
+      VpcId: vpc-0d9d3441cbc5f93a6
+    Type: 'AWS::EC2::SecurityGroup'
+  DefaultNetworkIngress:
+    Properties:
+      Description: Allow communication within network default
+      GroupId: !Ref DefaultNetwork
+      IpProtocol: '-1'
+      SourceSecurityGroupId: !Ref DefaultNetwork
+    Type: 'AWS::EC2::SecurityGroupIngress'
+  DjangoService:
+    DependsOn:
+      - RedisService
+    Properties:
+      Cluster: !GetAtt 
+        - Cluster
+        - Arn
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DeploymentController:
+        Type: ECS
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref DefaultNetwork
+          Subnets:
+            - subnet-00679d3eb302169df
+            - subnet-0ed7f0209a3c916ee
+            - subnet-094047189375fd454
+      PlatformVersion: 1.4.0
+      PropagateTags: SERVICE
+      SchedulingStrategy: REPLICA
+      ServiceRegistries:
+        - RegistryArn: !GetAtt 
+            - DjangoServiceDiscoveryEntry
+            - Arn
+      Tags:
+        - Key: com.docker.compose.project
+          Value: templatebackend-backend
+        - Key: com.docker.compose.service
+          Value: django
+      TaskDefinition: !Ref DjangoTaskDefinition
+    Type: 'AWS::ECS::Service'
+  DjangoServiceDiscoveryEntry:
+    Properties:
+      Description: '"django" service discovery entry in Cloud Map'
+      DnsConfig:
+        DnsRecords:
+          - TTL: 60
+            Type: A
+        RoutingPolicy: MULTIVALUE
+      HealthCheckCustomConfig:
+        FailureThreshold: 1
+      Name: django
+      NamespaceId: !Ref CloudMap
+    Type: 'AWS::ServiceDiscovery::Service'
+  DjangoTaskDefinition:
+    Properties:
+      ContainerDefinitions:
+        - Command:
+            - eu-north-1.compute.internal
+            - templatebackend-backend.local
+          Environment:
+            - Name: DJANGO_SETTINGS_MODULE
+              Value: !Ref DjangoSettingsModule
+            - Name: DJANGO_SECRET_KEY
+              Value: !Ref DjangoSecretKey
+            - Name: DJANGO_ADMIN_URL
+              Value: !Ref DjangoAdminUrl
+            - Name: DJANGO_ALLOWED_HOSTS
+              Value: !Ref DjangoAllowedHosts
+            - Name: DJANGO_SECURE_SSL_REDIRECT
+              Value: !Ref DjangoSecureSSLRedirect
+            - Name: DJANGO_SERVER_EMAIL
+              Value: !Ref DjangoServerEmail
+            - Name: DJANGO_AWS_ACCESS_KEY_ID
+              Value: !Ref DjangoAwsAccessKeyId
+            - Name: DJANGO_AWS_SECRET_ACCESS_KEY
+              Value: !Ref DjangoAwsSecretAccessKey
+            - Name: DJANGO_AWS_STORAGE_BUCKET_NAME
+              Value: !Ref DjangoAwsStorageBucketName
+            - Name: DJANGO_AWS_S3_REGION_NAME
+              Value: !Ref DjangoAwsS3RegionName
+            - Name: DJANGO_ACCOUNT_ALLOW_REGISTRATION
+              Value: !Ref DjangoAccountAllowRegistration
+            - Name: WEB_CONCURRENCY
+              Value: !Ref WebConcurrency
+            - Name: SENTRY_DSN
+              Value: !Ref SentryDsn
+            - Name: REDIS_URL
+              Value: !Ref RedisUrl
+            - Name: CELERY_FLOWER_USER
+              Value: !Ref CeleryFlowerUser
+            - Name: CELERY_FLOWER_PASSWORD
+              Value: !Ref CeleryFlowerPassword
+            - Name: POSTGRES_HOST
+              Value: !Ref PostgresHost
+            - Name: POSTGRES_PORT
+              Value: !Ref PostgresPort
+            - Name: POSTGRES_DB
+              Value: !Ref PostgresDB
+            - Name: POSTGRES_USER
+              Value: !Ref PostgresUser
+            - Name: POSTGRES_PASSWORD
+              Value: !Ref PostgresPassword
+          Essential: false
+          Image: 'docker/ecs-searchdomain-sidecar:1.0'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref 'AWS::Region'
+              awslogs-stream-prefix: templatebackend-backend
+          Name: Django_ResolvConf_InitContainer
+        - Command:
+            - /start
+          Environment:
+            - Name: DJANGO_SETTINGS_MODULE
+              Value: !Ref DjangoSettingsModule
+            - Name: DJANGO_SECRET_KEY
+              Value: !Ref DjangoSecretKey
+            - Name: DJANGO_ADMIN_URL
+              Value: !Ref DjangoAdminUrl
+            - Name: DJANGO_ALLOWED_HOSTS
+              Value: !Ref DjangoAllowedHosts
+            - Name: DJANGO_SECURE_SSL_REDIRECT
+              Value: !Ref DjangoSecureSSLRedirect
+            - Name: DJANGO_SERVER_EMAIL
+              Value: !Ref DjangoServerEmail
+            - Name: DJANGO_AWS_ACCESS_KEY_ID
+              Value: !Ref DjangoAwsAccessKeyId
+            - Name: DJANGO_AWS_SECRET_ACCESS_KEY
+              Value: !Ref DjangoAwsSecretAccessKey
+            - Name: DJANGO_AWS_STORAGE_BUCKET_NAME
+              Value: !Ref DjangoAwsStorageBucketName
+            - Name: DJANGO_AWS_S3_REGION_NAME
+              Value: !Ref DjangoAwsS3RegionName
+            - Name: DJANGO_ACCOUNT_ALLOW_REGISTRATION
+              Value: !Ref DjangoAccountAllowRegistration
+            - Name: WEB_CONCURRENCY
+              Value: !Ref WebConcurrency
+            - Name: SENTRY_DSN
+              Value: !Ref SentryDsn
+            - Name: REDIS_URL
+              Value: !Ref RedisUrl
+            - Name: CELERY_FLOWER_USER
+              Value: !Ref CeleryFlowerUser
+            - Name: CELERY_FLOWER_PASSWORD
+              Value: !Ref CeleryFlowerPassword
+            - Name: POSTGRES_HOST
+              Value: !Ref PostgresHost
+            - Name: POSTGRES_PORT
+              Value: !Ref PostgresPort
+            - Name: POSTGRES_DB
+              Value: !Ref PostgresDB
+            - Name: POSTGRES_USER
+              Value: !Ref PostgresUser
+            - Name: POSTGRES_PASSWORD
+              Value: !Ref PostgresPassword
+          DependsOn:
+            - Condition: SUCCESS
+              ContainerName: Django_ResolvConf_InitContainer
+          Essential: true
+          Image: >-
+            205984973098.dkr.ecr.eu-north-1.amazonaws.com/templatebackend_production_django:latest
+          LinuxParameters: {}
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref 'AWS::Region'
+              awslogs-stream-prefix: templatebackend-backend
+          Name: django
+      Cpu: '256'
+      ExecutionRoleArn: !Ref DjangoTaskExecutionRole
+      Family: templatebackend-backend-django
+      Memory: '512'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+    Type: 'AWS::ECS::TaskDefinition'
+  DjangoTaskExecutionRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Condition: {}
+            Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+        Version: 2012-10-17
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy'
+        - 'arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly'
+      Tags:
+        - Key: com.docker.compose.project
+          Value: templatebackend-backend
+        - Key: com.docker.compose.service
+          Value: django
+    Type: 'AWS::IAM::Role'
+  FlowerService:
+    DependsOn:
+      - RedisService
+    Properties:
+      Cluster: !GetAtt 
+        - Cluster
+        - Arn
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DeploymentController:
+        Type: ECS
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref DefaultNetwork
+          Subnets:
+            - subnet-00679d3eb302169df
+            - subnet-0ed7f0209a3c916ee
+            - subnet-094047189375fd454
+      PlatformVersion: 1.4.0
+      PropagateTags: SERVICE
+      SchedulingStrategy: REPLICA
+      ServiceRegistries:
+        - RegistryArn: !GetAtt 
+            - FlowerServiceDiscoveryEntry
+            - Arn
+      Tags:
+        - Key: com.docker.compose.project
+          Value: templatebackend-backend
+        - Key: com.docker.compose.service
+          Value: flower
+      TaskDefinition: !Ref FlowerTaskDefinition
+    Type: 'AWS::ECS::Service'
+  FlowerServiceDiscoveryEntry:
+    Properties:
+      Description: '"flower" service discovery entry in Cloud Map'
+      DnsConfig:
+        DnsRecords:
+          - TTL: 60
+            Type: A
+        RoutingPolicy: MULTIVALUE
+      HealthCheckCustomConfig:
+        FailureThreshold: 1
+      Name: flower
+      NamespaceId: !Ref CloudMap
+    Type: 'AWS::ServiceDiscovery::Service'
+  FlowerTaskDefinition:
+    Properties:
+      ContainerDefinitions:
+        - Command:
+            - eu-north-1.compute.internal
+            - templatebackend-backend.local
+          Environment:
+            - Name: DJANGO_SETTINGS_MODULE
+              Value: !Ref DjangoSettingsModule
+            - Name: DJANGO_SECRET_KEY
+              Value: !Ref DjangoSecretKey
+            - Name: DJANGO_ADMIN_URL
+              Value: !Ref DjangoAdminUrl
+            - Name: DJANGO_ALLOWED_HOSTS
+              Value: !Ref DjangoAllowedHosts
+            - Name: DJANGO_SECURE_SSL_REDIRECT
+              Value: !Ref DjangoSecureSSLRedirect
+            - Name: DJANGO_SERVER_EMAIL
+              Value: !Ref DjangoServerEmail
+            - Name: DJANGO_AWS_ACCESS_KEY_ID
+              Value: !Ref DjangoAwsAccessKeyId
+            - Name: DJANGO_AWS_SECRET_ACCESS_KEY
+              Value: !Ref DjangoAwsSecretAccessKey
+            - Name: DJANGO_AWS_STORAGE_BUCKET_NAME
+              Value: !Ref DjangoAwsStorageBucketName
+            - Name: DJANGO_AWS_S3_REGION_NAME
+              Value: !Ref DjangoAwsS3RegionName
+            - Name: DJANGO_ACCOUNT_ALLOW_REGISTRATION
+              Value: !Ref DjangoAccountAllowRegistration
+            - Name: WEB_CONCURRENCY
+              Value: !Ref WebConcurrency
+            - Name: SENTRY_DSN
+              Value: !Ref SentryDsn
+            - Name: REDIS_URL
+              Value: !Ref RedisUrl
+            - Name: CELERY_FLOWER_USER
+              Value: !Ref CeleryFlowerUser
+            - Name: CELERY_FLOWER_PASSWORD
+              Value: !Ref CeleryFlowerPassword
+            - Name: POSTGRES_HOST
+              Value: !Ref PostgresHost
+            - Name: POSTGRES_PORT
+              Value: !Ref PostgresPort
+            - Name: POSTGRES_DB
+              Value: !Ref PostgresDB
+            - Name: POSTGRES_USER
+              Value: !Ref PostgresUser
+            - Name: POSTGRES_PASSWORD
+              Value: !Ref PostgresPassword
+          Essential: false
+          Image: 'docker/ecs-searchdomain-sidecar:1.0'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref 'AWS::Region'
+              awslogs-stream-prefix: templatebackend-backend
+          Name: Flower_ResolvConf_InitContainer
+        - Command:
+            - /start-flower
+          Environment:
+            - Name: DJANGO_SETTINGS_MODULE
+              Value: !Ref DjangoSettingsModule
+            - Name: DJANGO_SECRET_KEY
+              Value: !Ref DjangoSecretKey
+            - Name: DJANGO_ADMIN_URL
+              Value: !Ref DjangoAdminUrl
+            - Name: DJANGO_ALLOWED_HOSTS
+              Value: !Ref DjangoAllowedHosts
+            - Name: DJANGO_SECURE_SSL_REDIRECT
+              Value: !Ref DjangoSecureSSLRedirect
+            - Name: DJANGO_SERVER_EMAIL
+              Value: !Ref DjangoServerEmail
+            - Name: DJANGO_AWS_ACCESS_KEY_ID
+              Value: !Ref DjangoAwsAccessKeyId
+            - Name: DJANGO_AWS_SECRET_ACCESS_KEY
+              Value: !Ref DjangoAwsSecretAccessKey
+            - Name: DJANGO_AWS_STORAGE_BUCKET_NAME
+              Value: !Ref DjangoAwsStorageBucketName
+            - Name: DJANGO_AWS_S3_REGION_NAME
+              Value: !Ref DjangoAwsS3RegionName
+            - Name: DJANGO_ACCOUNT_ALLOW_REGISTRATION
+              Value: !Ref DjangoAccountAllowRegistration
+            - Name: WEB_CONCURRENCY
+              Value: !Ref WebConcurrency
+            - Name: SENTRY_DSN
+              Value: !Ref SentryDsn
+            - Name: REDIS_URL
+              Value: !Ref RedisUrl
+            - Name: CELERY_FLOWER_USER
+              Value: !Ref CeleryFlowerUser
+            - Name: CELERY_FLOWER_PASSWORD
+              Value: !Ref CeleryFlowerPassword
+            - Name: POSTGRES_HOST
+              Value: !Ref PostgresHost
+            - Name: POSTGRES_PORT
+              Value: !Ref PostgresPort
+            - Name: POSTGRES_DB
+              Value: !Ref PostgresDB
+            - Name: POSTGRES_USER
+              Value: !Ref PostgresUser
+            - Name: POSTGRES_PASSWORD
+              Value: !Ref PostgresPassword
+          DependsOn:
+            - Condition: SUCCESS
+              ContainerName: Flower_ResolvConf_InitContainer
+          Essential: true
+          Image: >-
+            205984973098.dkr.ecr.eu-north-1.amazonaws.com/templatebackend_production_flower:latest
+          LinuxParameters: {}
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref 'AWS::Region'
+              awslogs-stream-prefix: templatebackend-backend
+          Name: flower
+      Cpu: '256'
+      ExecutionRoleArn: !Ref FlowerTaskExecutionRole
+      Family: templatebackend-backend-flower
+      Memory: '512'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+    Type: 'AWS::ECS::TaskDefinition'
+  FlowerTaskExecutionRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Condition: {}
+            Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+        Version: 2012-10-17
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy'
+        - 'arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly'
+      Tags:
+        - Key: com.docker.compose.project
+          Value: templatebackend-backend
+        - Key: com.docker.compose.service
+          Value: flower
+    Type: 'AWS::IAM::Role'
+  LoadBalancer:
+    Properties:
+      LoadBalancerAttributes:
+        - Key: load_balancing.cross_zone.enabled
+          Value: 'true'
+      Scheme: internet-facing
+      Subnets:
+        - subnet-00679d3eb302169df
+        - subnet-0ed7f0209a3c916ee
+        - subnet-094047189375fd454
+      Tags:
+        - Key: com.docker.compose.project
+          Value: templatebackend-backend
+      Type: network
+    Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer'
+  LogGroup:
+    Properties:
+      LogGroupName: /docker-compose/templatebackend-backend
+    Type: 'AWS::Logs::LogGroup'
+  ProductiontraefikAccessPoint:
+    Properties:
+      AccessPointTags:
+        - Key: com.docker.compose.project
+          Value: templatebackend-backend
+        - Key: com.docker.compose.volume
+          Value: production_traefik
+        - Key: Name
+          Value: templatebackend-backend_production_traefik
+      FileSystemId: fs-01ea7e438744f1789
+    Type: 'AWS::EFS::AccessPoint'
+  ProductiontraefikNFSMountTargetOnSubnet00679d3eb302169df:
+    Properties:
+      FileSystemId: fs-01ea7e438744f1789
+      SecurityGroups:
+        - !Ref DefaultNetwork
+      SubnetId: subnet-00679d3eb302169df
+    Type: 'AWS::EFS::MountTarget'
+  ProductiontraefikNFSMountTargetOnSubnet094047189375fd454:
+    Properties:
+      FileSystemId: fs-01ea7e438744f1789
+      SecurityGroups:
+        - !Ref DefaultNetwork
+      SubnetId: subnet-094047189375fd454
+    Type: 'AWS::EFS::MountTarget'
+  ProductiontraefikNFSMountTargetOnSubnet0ed7f0209a3c916ee:
+    Properties:
+      FileSystemId: fs-01ea7e438744f1789
+      SecurityGroups:
+        - !Ref DefaultNetwork
+      SubnetId: subnet-0ed7f0209a3c916ee
+    Type: 'AWS::EFS::MountTarget'
+  RedisService:
+    Properties:
+      Cluster: !GetAtt 
+        - Cluster
+        - Arn
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DeploymentController:
+        Type: ECS
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref DefaultNetwork
+          Subnets:
+            - subnet-00679d3eb302169df
+            - subnet-0ed7f0209a3c916ee
+            - subnet-094047189375fd454
+      PlatformVersion: 1.4.0
+      PropagateTags: SERVICE
+      SchedulingStrategy: REPLICA
+      ServiceRegistries:
+        - RegistryArn: !GetAtt 
+            - RedisServiceDiscoveryEntry
+            - Arn
+      Tags:
+        - Key: com.docker.compose.project
+          Value: templatebackend-backend
+        - Key: com.docker.compose.service
+          Value: redis
+      TaskDefinition: !Ref RedisTaskDefinition
+    Type: 'AWS::ECS::Service'
+  RedisServiceDiscoveryEntry:
+    Properties:
+      Description: '"redis" service discovery entry in Cloud Map'
+      DnsConfig:
+        DnsRecords:
+          - TTL: 60
+            Type: A
+        RoutingPolicy: MULTIVALUE
+      HealthCheckCustomConfig:
+        FailureThreshold: 1
+      Name: redis
+      NamespaceId: !Ref CloudMap
+    Type: 'AWS::ServiceDiscovery::Service'
+  RedisTaskDefinition:
+    Properties:
+      ContainerDefinitions:
+        - Command:
+            - eu-north-1.compute.internal
+            - templatebackend-backend.local
+          Essential: false
+          Image: 'docker/ecs-searchdomain-sidecar:1.0'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref 'AWS::Region'
+              awslogs-stream-prefix: templatebackend-backend
+          Name: Redis_ResolvConf_InitContainer
+        - DependsOn:
+            - Condition: SUCCESS
+              ContainerName: Redis_ResolvConf_InitContainer
+          Essential: true
+          Image: 'public.ecr.aws/docker/library/redis:6'
+          LinuxParameters: {}
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref 'AWS::Region'
+              awslogs-stream-prefix: templatebackend-backend
+          Name: redis
+      Cpu: '256'
+      ExecutionRoleArn: !Ref RedisTaskExecutionRole
+      Family: templatebackend-backend-redis
+      Memory: '512'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+    Type: 'AWS::ECS::TaskDefinition'
+  RedisTaskExecutionRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Condition: {}
+            Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+        Version: 2012-10-17
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy'
+        - 'arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly'
+      Tags:
+        - Key: com.docker.compose.project
+          Value: templatebackend-backend
+        - Key: com.docker.compose.service
+          Value: redis
+    Type: 'AWS::IAM::Role'
+  TraefikService:
+    DependsOn:
+      - TraefikTCP80Listener
+      - TraefikTCP443Listener
+      - TraefikTCP5555Listener
+      - DjangoService
+      - ProductiontraefikNFSMountTargetOnSubnet00679d3eb302169df
+      - ProductiontraefikNFSMountTargetOnSubnet0ed7f0209a3c916ee
+      - ProductiontraefikNFSMountTargetOnSubnet094047189375fd454
+    Properties:
+      Cluster: !GetAtt 
+        - Cluster
+        - Arn
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DeploymentController:
+        Type: ECS
+      DesiredCount: 1
+      LaunchType: FARGATE
+      LoadBalancers:
+        - ContainerName: traefik
+          ContainerPort: 80
+          TargetGroupArn: !Ref TraefikTCP80TargetGroup
+        - ContainerName: traefik
+          ContainerPort: 443
+          TargetGroupArn: !Ref TraefikTCP443TargetGroup
+        - ContainerName: traefik
+          ContainerPort: 5555
+          TargetGroupArn: !Ref TraefikTCP5555TargetGroup
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref DefaultNetwork
+          Subnets:
+            - subnet-00679d3eb302169df
+            - subnet-0ed7f0209a3c916ee
+            - subnet-094047189375fd454
+      PlatformVersion: 1.4.0
+      PropagateTags: SERVICE
+      SchedulingStrategy: REPLICA
+      ServiceRegistries:
+        - RegistryArn: !GetAtt 
+            - TraefikServiceDiscoveryEntry
+            - Arn
+      Tags:
+        - Key: com.docker.compose.project
+          Value: templatebackend-backend
+        - Key: com.docker.compose.service
+          Value: traefik
+      TaskDefinition: !Ref TraefikTaskDefinition
+    Type: 'AWS::ECS::Service'
+  TraefikServiceDiscoveryEntry:
+    Properties:
+      Description: '"traefik" service discovery entry in Cloud Map'
+      DnsConfig:
+        DnsRecords:
+          - TTL: 60
+            Type: A
+        RoutingPolicy: MULTIVALUE
+      HealthCheckCustomConfig:
+        FailureThreshold: 1
+      Name: traefik
+      NamespaceId: !Ref CloudMap
+    Type: 'AWS::ServiceDiscovery::Service'
+  TraefikTCP80Listener:
+    Properties:
+      DefaultActions:
+        - ForwardConfig:
+            TargetGroups:
+              - TargetGroupArn: !Ref TraefikTCP80TargetGroup
+          Type: forward
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: TCP
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+  TraefikTCP80TargetGroup:
+    Properties:
+      Port: 80
+      Protocol: TCP
+      Tags:
+        - Key: com.docker.compose.project
+          Value: templatebackend-backend
+      TargetType: ip
+      VpcId: vpc-0d9d3441cbc5f93a6
+    Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
+  TraefikTCP443Listener:
+    Properties:
+      DefaultActions:
+        - ForwardConfig:
+            TargetGroups:
+              - TargetGroupArn: !Ref TraefikTCP443TargetGroup
+          Type: forward
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 443
+      Protocol: TCP
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+  TraefikTCP443TargetGroup:
+    Properties:
+      Port: 443
+      Protocol: TCP
+      Tags:
+        - Key: com.docker.compose.project
+          Value: templatebackend-backend
+      TargetType: ip
+      VpcId: vpc-0d9d3441cbc5f93a6
+    Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
+  TraefikTCP5555Listener:
+    Properties:
+      DefaultActions:
+        - ForwardConfig:
+            TargetGroups:
+              - TargetGroupArn: !Ref TraefikTCP5555TargetGroup
+          Type: forward
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 5555
+      Protocol: TCP
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+  TraefikTCP5555TargetGroup:
+    Properties:
+      Port: 5555
+      Protocol: TCP
+      Tags:
+        - Key: com.docker.compose.project
+          Value: templatebackend-backend
+      TargetType: ip
+      VpcId: vpc-0d9d3441cbc5f93a6
+    Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
+  TraefikTaskDefinition:
+    Properties:
+      ContainerDefinitions:
+        - Command:
+            - eu-north-1.compute.internal
+            - templatebackend-backend.local
+          Essential: false
+          Image: 'docker/ecs-searchdomain-sidecar:1.0'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref 'AWS::Region'
+              awslogs-stream-prefix: templatebackend-backend
+          Name: Traefik_ResolvConf_InitContainer
+        - DependsOn:
+            - Condition: SUCCESS
+              ContainerName: Traefik_ResolvConf_InitContainer
+          Essential: true
+          Image: >-
+            205984973098.dkr.ecr.eu-north-1.amazonaws.com/templatebackend_production_traefik:latest
+          LinuxParameters: {}
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref 'AWS::Region'
+              awslogs-stream-prefix: templatebackend-backend
+          MountPoints:
+            - ContainerPath: /etc/traefik/acme
+              SourceVolume: production_traefik
+          Name: traefik
+          PortMappings:
+            - ContainerPort: 80
+              HostPort: 80
+              Protocol: tcp
+            - ContainerPort: 443
+              HostPort: 443
+              Protocol: tcp
+            - ContainerPort: 5555
+              HostPort: 5555
+              Protocol: tcp
+      Cpu: '256'
+      ExecutionRoleArn: !Ref TraefikTaskExecutionRole
+      Family: templatebackend-backend-traefik
+      Memory: '512'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      TaskRoleArn: !Ref TraefikTaskRole
+      Volumes:
+        - EFSVolumeConfiguration:
+            AuthorizationConfig:
+              AccessPointId: !Ref ProductiontraefikAccessPoint
+              IAM: ENABLED
+            FilesystemId: fs-01ea7e438744f1789
+            TransitEncryption: ENABLED
+          Name: production_traefik
+    Type: 'AWS::ECS::TaskDefinition'
+  TraefikTaskExecutionRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Condition: {}
+            Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+        Version: 2012-10-17
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy'
+        - 'arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly'
+      Tags:
+        - Key: com.docker.compose.project
+          Value: templatebackend-backend
+        - Key: com.docker.compose.service
+          Value: traefik
+    Type: 'AWS::IAM::Role'
+  TraefikTaskRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Condition: {}
+            Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+        Version: 2012-10-17
+      Policies:
+        - PolicyDocument:
+            Statement:
+              - Action:
+                  - 'elasticfilesystem:ClientMount'
+                  - 'elasticfilesystem:ClientWrite'
+                  - 'elasticfilesystem:ClientRootAccess'
+                Condition:
+                  StringEquals:
+                    'elasticfilesystem:AccessPointArn': !Ref ProductiontraefikAccessPoint
+                Effect: Allow
+                Principal: {}
+                Resource:
+                  - >-
+                    arn:aws:elasticfilesystem:eu-north-1:205984973098:file-system/fs-01ea7e438744f1789
+            Version: 2012-10-17
+          PolicyName: TraefikProductiontraefikVolumeMountPolicy
+      Tags:
+        - Key: com.docker.compose.project
+          Value: templatebackend-backend
+        - Key: com.docker.compose.service
+          Value: traefik
+    Type: 'AWS::IAM::Role'

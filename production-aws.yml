@@ -1,0 +1,64 @@
+version: '3'
+
+volumes:
+  # production_postgres_data: {}
+  # production_postgres_data_backups: {}
+  production_traefik: {}
+
+services:
+  django: &django
+    build:
+      context: .
+      dockerfile: ./compose/production/django/Dockerfile
+    image: 205984973098.dkr.ecr.eu-north-1.amazonaws.com/templatebackend_production_django
+    platform: linux/amd64
+    depends_on:
+      # - postgres
+      - redis
+    command: /start
+
+  # postgres:
+  #   build:
+  #     context: .
+  #     dockerfile: ./compose/production/postgres/Dockerfile
+  #   image: 205984973098.dkr.ecr.eu-north-1.amazonaws.com/templatebackend_production_postgres
+  #   volumes:
+  #     - production_postgres_data:/var/lib/postgresql/data
+  #     - production_postgres_data_backups:/backups
+
+  traefik:
+    build:
+      context: .
+      dockerfile: ./compose/production/traefik/Dockerfile
+    image: 205984973098.dkr.ecr.eu-north-1.amazonaws.com/templatebackend_production_traefik
+    platform: linux/amd64
+    depends_on:
+      - django
+    volumes:
+      - production_traefik:/etc/traefik/acme
+    ports:
+      - '0.0.0.0:80:80'
+      - '0.0.0.0:443:443'
+      - '0.0.0.0:5555:5555'
+
+  redis:
+    image: public.ecr.aws/docker/library/redis:6
+    platform: linux/amd64
+
+  celeryworker:
+    <<: *django
+    image: 205984973098.dkr.ecr.eu-north-1.amazonaws.com/templatebackend_production_celeryworker
+    platform: linux/amd64
+    command: /start-celeryworker
+
+  celerybeat:
+    <<: *django
+    image: 205984973098.dkr.ecr.eu-north-1.amazonaws.com/templatebackend_production_celerybeat
+    platform: linux/amd64
+    command: /start-celerybeat
+
+  flower:
+    <<: *django
+    image: 205984973098.dkr.ecr.eu-north-1.amazonaws.com/templatebackend_production_flower
+    platform: linux/amd64
+    command: /start-flower
